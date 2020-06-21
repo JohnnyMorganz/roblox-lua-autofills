@@ -131,63 +131,6 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
 
             return [ functionHelpers ]
         })()
-
-        // this.serviceFunctionHelpers = (async () => {
-        //     const output = new Map()
-
-        //     const services = (await getServices).values()
-        //     for (const service of services) {
-        //         const callableMembers = service.Members.filter(
-        //             member => member.MemberType === "Function") as ApiFunction[]
-
-        //         const classInformations: ClassSignatureInformations = {}
-
-        //         for (const member of callableMembers) {
-        //             classInformations[member.Name] = classInformations[member.Name] || []
-
-        //             const signature = parameterizeSignature(
-        //                 new vscode.SignatureInformation(`${member.Name}(`),
-        //                 member.Parameters,
-        //             )
-
-        //             signature.label += `): ${member.ReturnType ? member.ReturnType.Name : "unknown"}`
-        //             signature.documentation = createDocumentationString(member, "function", service.Name)
-        //             classInformations[member.Name].push(signature)
-        //         }
-
-        //         output.set(service.Name, classInformations)
-        //     }
-
-        //     return output
-        // })()
-
-        // this.serviceEventHelpers = (async () => {
-        //     const output = new Map()
-
-        //     const services = (await getServices).values()
-        //     for (const service of services) {
-        //         const callableMembers = service.Members.filter(
-        //             member => member.MemberType === "Event") as ApiFunction[]
-
-        //         const classInformations: ClassSignatureInformations = {}
-
-        //         for (const member of callableMembers) {
-        //             classInformations[member.Name] = classInformations[member.Name] || []
-
-        //             const signature = parameterizeSignature(
-        //                 new vscode.SignatureInformation(`${member.Name}:Connect(`),
-        //                 member.Parameters,
-        //             )
-        //             signature.label += ")"
-        //             signature.documentation = createDocumentationString(member, "event", service.Name)
-        //             classInformations[member.Name].push(signature)
-        //         }
-
-        //         output.set(service.Name, classInformations)
-        //     }
-
-        //     return output
-        // })()
     }
 
     public async provideSignatureHelp(
