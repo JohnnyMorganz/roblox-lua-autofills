@@ -22,13 +22,13 @@ export const createStructParameterLabel = (parameter: AutocompleteParameter) =>
     `${parameter.name}${parameter.optional ? "?" : ""}: ${parameter.type || "unknown"}`
 
 export const createDocumentationString = (
-  member: ApiMember, type: "function" | "callback" | "property" | "event", serviceName: string,
+  member: ApiMember, type: "Function" | "Callback" | "Property" | "Event", serviceName: string,
 ) => {
     let value = member.Description || ""
     if (member.Inherited) {
         value += `${value !== "" ? "\n\n" : ""}[Inherited from ${member.Inherited}]`
     }
-    value += `${value !== "" ? "\n\n" : ""}[Developer Reference](https://developer.roblox.com/en-us/api-reference/${type}/${member.Inherited || serviceName}/${member.Name})`
+    value += `${value !== "" ? "\n\n" : ""}[Developer Reference](https://developer.roblox.com/en-us/api-reference/${type.toLowerCase()}/${member.Inherited || serviceName}/${member.Name})`
     return new vscode.MarkdownString(value)
 }
 
@@ -48,7 +48,7 @@ export interface ValueType extends ApiValueType {
 
 // Heuristic method in order to infer the type of parts of a codeblock
 // Codeblocks can be things like `Lighting.Ambient.R`
-export const inferType = async (document: vscode.TextDocument | null, code: string) => {
+export const inferType = async (document: vscode.TextDocument, position: vscode.Position, code: string) => {
     const codeSplit = code.split(/[.:]/)
     // TODO: This split will break if there are points within a function call, eg. Lighting.Ambient:Lerp(CFrame.new()).R
 
@@ -57,12 +57,77 @@ export const inferType = async (document: vscode.TextDocument | null, code: stri
     const services = await getServices
 
     const output: ValueType[] = [] // new Map<string, ApiValueType>()
-
     let lastVariableInfo: ApiClass | AutocompleteGroup | undefined
+
+    // Determine first part of the chain, need to determine what type it is
+    // This can be done by checking if its a Service
+    // or by looking above the line for variable assignment
+    const firstVariable = codeSplit.shift() as string
+
+    // Check for a predefined alias to a class for this variable
+    if (CLASS_ALIASES[firstVariable]) {
+        const klass = apiDump.Classes.find(k => k.Name === CLASS_ALIASES[firstVariable])
+        if (klass) {
+            lastVariableInfo = klass
+            output.push({ VariableName: firstVariable, Category: "Class", Name: klass.Name, Static: false })
+        }
+    }
+
+    // Search services for the variable
+    if (lastVariableInfo === undefined) {
+        const service = services.get(firstVariable)
+        if (service) {
+            lastVariableInfo = service
+            output.push({ VariableName: firstVariable, Category: "Class", Name: service.Name, Static: false })
+        }
+    }
+
+    // Search ItemStructs for the variable
+    if (lastVariableInfo === undefined) {
+        const itemStruct = autocompleteDump.ItemStruct.find(struct => struct.name === firstVariable)
+        if (itemStruct) {
+            lastVariableInfo = itemStruct
+            output.push({ VariableName: firstVariable, Category: "DataType", Name: itemStruct.name, Static: true })
+        }
+    }
+
+    // Check for variable assignment before this line
+    // NOTE: This test has no knowledge of scope, it will just return the last defined variable
+    // TODO: Generate an AST and parse this for scope instead?
+    if (lastVariableInfo === undefined) {
+        const text = document.getText(new vscode.Range(new vscode.Position(0, 0), position))
+        // Find all the lines where this variable is defined
+        const variableStringMatch = text.match(new RegExp(`^\\s*local\\s+${firstVariable}\\s*=\\s*(.*)`, "mg"))
+        if (variableStringMatch !== null) {
+            // Get the last line it was defined on (assuming this is the best definition)
+            const lastString = variableStringMatch[variableStringMatch.length - 1]
+            const codeString = lastString.match(new RegExp(`^\\s*local\\s+${firstVariable}\\s*=\\s*(.*)`, "m"))
+            if (codeString !== null) {
+                // If it is a long string, find the latest type
+                const types = await inferType(document, position, codeString[1])
+                if (types.length > 0) {
+                    const lastType = types[types.length - 1]
+                    output.push(lastType)
+
+                    if (lastType.Category === "Class") {
+                        lastVariableInfo = apiDump.Classes.find(k => k.Name === lastType.Name)
+                    } else if (lastType.Category === "DataType") {
+                        lastVariableInfo = autocompleteDump.ItemStruct.find(struct => struct.name === lastType.Name)
+                    }
+                }
+            }
+        }
+    }
+
+    if (lastVariableInfo === undefined) {
+        // Could not determine the first variable
+        // Just return an empty array
+        return output
+    }
+
     while (codeSplit.length > 0) {
         const variable = codeSplit.shift() as string
-
-        if (lastVariableInfo) {
+        if (lastVariableInfo !== undefined) {
             if (isVariableClass(lastVariableInfo)) {
                 // lastVariableInfo is a Class from the API Dump
                 const memberNameMatch = variable.match(/(\w+)\(?.*\)?/) // Need to match out the parentheses and params
@@ -150,7 +215,7 @@ export const inferType = async (document: vscode.TextDocument | null, code: stri
 
                 // Check to see if it is a function
                 // Need to match the functionName to exclude parentheses and parameters
-                const functionNameMatch = variable.match(/(\w+)\(?.*\)?/)
+                const functionNameMatch = variable.match(/(\w+)\(?(.*)\)?/)
                 if (functionNameMatch !== null) {
                     const functionName = functionNameMatch[1]
                     const func = lastVariableInfo.functions.find(
@@ -158,6 +223,19 @@ export const inferType = async (document: vscode.TextDocument | null, code: stri
                     )
 
                     if (func) {
+                        // Special test for Instance.new(x)
+                        if (lastVariableInfo.name === "Instance" && func.name === "new") {
+                            const actualClass = variable.match(/new\(["'](\w+)["']\)/)
+                            if (actualClass !== null) {
+                                const classInfo = apiDump.Classes.find(klass => klass.Name === actualClass[1])
+                                if (classInfo) {
+                                    lastVariableInfo = classInfo
+                                    output.push({ VariableName: variable, Category: "Class", Name: classInfo.Name, Static: false })
+                                    continue
+                                }
+                            }
+                        }
+
                         const returns = func.returns[0] // Only taking the first return type for the time being
                         if (returns) {
                             // Check if the property is a classs
@@ -197,40 +275,8 @@ export const inferType = async (document: vscode.TextDocument | null, code: stri
                 break
             }
         } else {
-            // First part of chain, need to determine what type it is
-            // This can be done by checking if its a Service
-            // or by looking above the line for variable assignment
-
-            // Check for a predefined alias to a class for this variable
-            if (CLASS_ALIASES[variable]) {
-
-                const klass = apiDump.Classes.find(k => k.Name === CLASS_ALIASES[variable])
-                if (klass) {
-                    lastVariableInfo = klass
-                    output.push({ VariableName: variable, Category: "Class", Name: klass.Name, Static: false })
-                    continue
-                }
-            }
-
-            // Search services for the variable
-            const service = services.get(variable)
-            if (service) {
-                lastVariableInfo = service
-                output.push({ VariableName: variable, Category: "Class", Name: service.Name, Static: false })
-                continue
-            }
-
-            // Search ItemStructs for the variable
-            const itemStruct = autocompleteDump.ItemStruct.find(struct => struct.name === variable)
-            if (itemStruct) {
-                lastVariableInfo = itemStruct
-                output.push({ VariableName: variable, Category: "DataType", Name: itemStruct.name, Static: true })
-                continue
-            }
-
-            // TODO: Check for variable assignment
-
-            // We were unable to find anything, so we just need to break
+            // No longer a present lastVariableInfo
+            // Therefore, break the loop
             break
         }
     }
