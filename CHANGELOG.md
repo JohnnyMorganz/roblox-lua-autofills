@@ -10,6 +10,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Added support for the Lua Libraries available in Roblox (math, string, os, etc.)
 - Added support for static methods and properties of Roblox Datatypes (Vector3, Color3, etc.)
 - Fixed Instance.new popping up whenever you typed a .
+- Added a heuristic type inference system. It is now able to determine types from complex strings of code, and from variable assignment
+- Added support for service aliases (i.e. `workspace` and `game`)
+- Added autocomplete for EventInstances (:Connect() and :Wait())
+- Added support for methods and properties of Roblox Datatypes on services (eg. `Lighting.Ambient:Lerp()` where Ambient is a `Color3`)
+- Added signature help. The extension will now provide parameter information when you are within a service/DataType function
 
 ## [1.7.1]
 - Service auto-importer will now suggest for non-idiomatic whitespace in service declarations.
