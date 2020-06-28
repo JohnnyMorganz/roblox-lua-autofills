@@ -27,7 +27,7 @@ const parameterizeSignature = (
     for (const parameterIndex in parameters) {
         if (parameters[parameterIndex]) {
             const parameter = parameters[parameterIndex]
-            const parameterLabel = 
+            const parameterLabel =
                 isApiParameter(parameter) ? createParameterLabel(parameter) : createStructParameterLabel(parameter)
             signature.parameters.push(
                 new vscode.ParameterInformation(
@@ -75,7 +75,7 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
                     )
 
                     signature.label += `): ${member.ReturnType ? member.ReturnType.Name : "unknown"}`
-                    signature.documentation = createDocumentationString(member, "function", klass.Name)
+                    signature.documentation = createDocumentationString(member, "Function", klass.Name)
                     functionClassInformations[member.Name].push(signature)
                 }
 
@@ -95,7 +95,7 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
                         member.Parameters,
                     )
                     signature.label += ")"
-                    signature.documentation = createDocumentationString(member, "event", klass.Name)
+                    signature.documentation = createDocumentationString(member, "Event", klass.Name)
                     eventClassInformations[member.Name].push(signature)
                 }
 
@@ -140,7 +140,7 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
         context: vscode.SignatureHelpContext,
     ) {
         const codeAtLine = document.lineAt(position.line).text.substr(0, position.character)
-        const codeString = codeAtLine.match(/([\w.:]+)\(([\w"',\s.:()-]*)(\))?$/)
+        const codeString = codeAtLine.match(/([\w.:]+)\(([\w"',\s.:(-]*)(\))?$/)
 
         if (codeString !== null) {
             const indexString = codeString[1]
@@ -150,7 +150,7 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
                 return null
             }
 
-            const types = await inferType(document, indexString.trim())
+            const types = await inferType(document, position, indexString.trim())
 
             let memberType = types[types.length - 1]
             let classType = types[types.length - 2]
@@ -166,7 +166,6 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
                 return
             }
 
-            console.log(memberType, classType, isEvent)
             const [ functionHelpers, eventHelpers ] =
                 classType.Category === "Class" ? await this.classHelpers : await this.structHelpers
 
