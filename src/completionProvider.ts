@@ -159,7 +159,23 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
                     ).length > 0 || itemStruct.properties.filter((property) => property.static).length > 0
                 },
             ).map(
-                (itemStruct) => new vscode.CompletionItem(itemStruct.name, vscode.CompletionItemKind.Class),
+                itemStruct => {
+                    const completionItem = new vscode.CompletionItem(itemStruct.name, vscode.CompletionItemKind.Class)
+                    completionItem.detail = `(struct) ${itemStruct.name}`
+                    completionItem.documentation = new vscode.MarkdownString(`[Developer Reference](https://developer.roblox.com/en-us/api-reference/datatype/${itemStruct.name})`)
+
+                    if (itemStruct.name === "Instance") {
+                        const func = itemStruct.functions.find(func => func.name === "new")
+                        if (func !== undefined) {
+                            completionItem.insertText = new vscode.SnippetString("Instance.new($0)")
+                            completionItem.label = "Instance.new"
+                            completionItem.detail = `(function) ${itemStruct.name}.${func.name}(${func.parameters.map(param => `${param.name}${param.optional ? "?" : ""}: ${param.type || "unknown"}`).join(", ")}): ${func.returns.length > 0 ? func.returns.map((ret) => ret.type).join(", ") : "unknown"}`
+                            completionItem.documentation = new vscode.MarkdownString(`${func.description ? func.description + "\n\n" : ""}[Developer Reference](https://developer.roblox.com/en-us/api-reference/datatype/${itemStruct.name})`)
+                        }
+                    }
+
+                    return completionItem
+                },
             )
         })()
     }
