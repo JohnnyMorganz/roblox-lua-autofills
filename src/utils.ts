@@ -2,6 +2,11 @@ import * as vscode from "vscode"
 import { AutocompleteGroup, AutocompleteParameter, getAutocompleteDump } from "./autocompleteDump"
 import { ApiClass, ApiMember, ApiParameter, ApiValueType, getApiDump } from "./dump"
 
+export const CLASS_ALIASES: { [name: string]: string } = {
+    game: "DataModel",
+    workspace: "Workspace",
+}
+
 export const getServices: Promise<Map<string, ApiClass>> = (async () => {
     const apiDump = await getApiDump()
     const output = new Map()
@@ -30,11 +35,6 @@ export const createDocumentationString = (
     }
     value += `${value !== "" ? "\n\n" : ""}[Developer Reference](https://developer.roblox.com/en-us/api-reference/${type.toLowerCase()}/${member.Inherited || serviceName}/${member.Name})`
     return new vscode.MarkdownString(value)
-}
-
-export const CLASS_ALIASES: { [name: string]: string } = {
-    game: "DataModel",
-    workspace: "Workspace",
 }
 
 const isVariableClass = (variable: ApiClass | AutocompleteGroup): variable is ApiClass => {
@@ -66,10 +66,10 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
 
     // Check for a predefined alias to a class for this variable
     if (CLASS_ALIASES[firstVariable]) {
-        const klass = apiDump.Classes.find(k => k.Name === CLASS_ALIASES[firstVariable])
-        if (klass) {
-            lastVariableInfo = klass
-            output.push({ VariableName: firstVariable, Category: "Class", Name: klass.Name, Static: false })
+        const actualClass = apiDump.Classes.find(klass => klass.Name === CLASS_ALIASES[firstVariable])
+        if (actualClass) {
+            lastVariableInfo = actualClass
+            output.push({ VariableName: firstVariable, Category: "Class", Name: actualClass.Name, Static: false })
         }
     }
 
@@ -93,7 +93,7 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
 
     // Check for variable assignment before this line
     // NOTE: This test has no knowledge of scope, it will just return the last defined variable
-    // TODO: Generate an AST and parse this for scope instead?
+    // FIXME: Generate an AST and parse this for scope instead?
     if (lastVariableInfo === undefined) {
         const text = document.getText(new vscode.Range(new vscode.Position(0, 0), position))
         // Find all the lines where this variable is defined
@@ -137,14 +137,15 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
                     break
                 }
 
-                const member = lastVariableInfo.Members.find(member => member.Name === memberNameMatch[1])
+                const member = lastVariableInfo.Members.find(mem => mem.Name === memberNameMatch[1])
                 if (member) {
                     if (member.MemberType === "Property" || member.MemberType === "Function") {
                         const outputType = member.MemberType === "Property" ? member.ValueType : member.ReturnType
                         output.push({...outputType, VariableName: variable, Static: false})
+
                         if (outputType.Category === "Class") {
                             const info = apiDump.Classes.find(klass => klass.Name === outputType.Name)
-                            if (info) {
+                            if (info !== undefined) {
                                 lastVariableInfo = info
                             } else {
                                 // Cannot find class, therefore cannot infer type
@@ -153,7 +154,7 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
                         } else if (outputType.Category === "DataType") {
                             const info = autocompleteDump.ItemStruct.find(
                                 struct => struct.name === outputType.Name)
-                            if (info) {
+                            if (info !== undefined) {
                                 lastVariableInfo = info
                             } else {
                                 // Cannot find DataType, therefore cannot infer type
@@ -168,6 +169,7 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
                     } else if (member.MemberType === "Event") {
                         // Return an EventInstance DataType
                         output.push({ VariableName: variable, Category: "DataType", Name: "EventInstance", Static: false })
+
                         lastVariableInfo = autocompleteDump.ItemStruct.find(struct => struct.name === "EventInstance")
                         if (lastVariableInfo === undefined) {
                             // Break if EventInstance couldn't be found, as the type cannot be inferred
@@ -184,11 +186,12 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
                 // Check to see if it is a property
                 const previousItem = output[output.length - 1]
                 const property = lastVariableInfo.properties.find(
-                    property => property.name === variable && property.static === previousItem.Static)
-                if (property) {
-                    // Check if the property is a classs
+                    prop => prop.name === variable && prop.static === previousItem.Static)
+
+                if (property !== undefined) {
+                    // Check if the property is a class
                     const classInfo = apiDump.Classes.find(klass => klass.Name === property.type)
-                    if (classInfo) {
+                    if (classInfo !== undefined) {
                         // The property is a Class
                         lastVariableInfo = classInfo
                         output.push({ VariableName: variable, Category: "Class", Name: classInfo.Name, Static: false })
@@ -196,9 +199,9 @@ export const inferType = async (document: vscode.TextDocument, position: vscode.
                     }
 
                     // Check if the property is a DataType
-                    const dataTypeInfo = autocompleteDump.ItemStruct.find(
-                        struct => struct.name === property.type)
-                    if (dataTypeInfo) {
+                    // const dataTypeInfo = autocompleteDump.ItemStruct.find(
+                    //     struct => struct.name === property.type)
+                    if (dataTypeInfo !== undefined) {
                         // The property is a DataType
                         lastVariableInfo = dataTypeInfo
                         output.push({ VariableName: variable, Category: "DataType", Name: dataTypeInfo.name, Static: false })

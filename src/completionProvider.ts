@@ -15,17 +15,8 @@ const UNSCRIPTABLE_TAGS: Set<string> = new Set([
 
 const IMPORT_PATTERN = /^local \w+ = game:GetService\("\w+"\)\s*$/
 
-const getAllowedClassMembers = (member: ApiMember) => {
-    const tags = member.Tags
-    if (tags !== undefined) {
-        for (const tag of tags) {
-            if (UNSCRIPTABLE_TAGS.has(tag)) {
-                return false
-            }
-        }
-    }
-    return true
-}
+const getAllowedClassMembers = (member: ApiMember) => member.Tags === undefined ||
+    member.Tags.every(tag => !UNSCRIPTABLE_TAGS.has(tag))
 
 const getClassCompletionItemKind = (type: "Function" | "Callback" | "Event" | "Property") => {
     switch (type) {
@@ -80,7 +71,7 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
 
                     const completionItem = new vscode.CompletionItem(
                         member.Name,
-                        getClassCompletionItemKind(member.MemberType)
+                        getClassCompletionItemKind(member.MemberType),
                     )
                     completionItem.detail = getClassCompletionItemDetail(member, klass)
                     completionItem.documentation = createDocumentationString(member, member.MemberType, klass.Name)
@@ -165,7 +156,7 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
                     completionItem.documentation = new vscode.MarkdownString(`[Developer Reference](https://developer.roblox.com/en-us/api-reference/datatype/${itemStruct.name})`)
 
                     if (itemStruct.name === "Instance") {
-                        const func = itemStruct.functions.find(func => func.name === "new")
+                        const func = itemStruct.functions.find(f => f.name === "new")
                         if (func !== undefined) {
                             completionItem.insertText = new vscode.SnippetString("Instance.new($0)")
                             completionItem.label = "Instance.new"
@@ -268,7 +259,8 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
                         const functionName = extraMatch[1]
                         const parameters = extraMatch[2]
 
-                        const itemStruct = (await getAutocompleteDump()).ItemStruct.find(struct => struct.name === mainType.Name)
+                        const itemStruct = (await getAutocompleteDump()).ItemStruct
+                            .find(struct => struct.name === mainType.Name)
                         const itemStructFunc = itemStruct?.functions.find(func => func.name === functionName)
                         const parameter = itemStructFunc?.parameters[parameters.split(",").length - 1]
 
@@ -283,15 +275,8 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
                                     if (constraint === "any") {
                                         return true
                                     } else if (constraint === "isScriptCreatable") {
-                                        const tags = klass.Tags
-                                        if (tags) {
-                                            for (const tag of tags) {
-                                                if (UNCREATABLE_TAGS.has(tag)) {
-                                                    return false
-                                                }
-                                            }
-                                        }
-                                        return true
+                                        return klass.Tags === undefined ||
+                                            klass.Tags.every(tag => !UNCREATABLE_TAGS.has(tag))
                                     }
                                 }
                                 return false
@@ -313,9 +298,11 @@ export class RobloxCompletionProvider implements vscode.CompletionItemProvider {
 
                 if (operator === ".") {
                     if (mainType.Static === true) {
-                        return dotCompletion.get(mainType.Name)?.filter(item => item.kind === vscode.CompletionItemKind.Function)
+                        return dotCompletion.get(mainType.Name)?.filter(item =>
+                            item.kind === vscode.CompletionItemKind.Function)
                     } else {
-                        return dotCompletion.get(mainType.Name)?.filter(item => item.kind !== vscode.CompletionItemKind.Function)
+                        return dotCompletion.get(mainType.Name)?.filter(item =>
+                            item.kind !== vscode.CompletionItemKind.Function)
                     }
                 } else if (operator === ":" && mainType.Static === false) {
                     return colonCompletion.get(mainType.Name)

@@ -14,9 +14,8 @@ interface ClassSignatureInformations {
     [memberName: string]: vscode.SignatureInformation[]
 }
 
-const isApiParameter = (variable: ApiParameter | AutocompleteParameter): variable is ApiParameter => {
-    return (variable as ApiParameter).Name !== undefined
-}
+const isApiParameter = (variable: ApiParameter | AutocompleteParameter): variable is ApiParameter =>
+    (variable as ApiParameter).Name !== undefined
 
 const parameterizeSignature = (
         signature: vscode.SignatureInformation,
@@ -107,7 +106,6 @@ export class RobloxSignatureProvider implements vscode.SignatureHelpProvider {
 
         this.structHelpers = (async () => {
             const functionHelpers = new Map<string, ClassSignatureInformations>()
-            // const eventHelpers = new Map<string, ClassSignatureInformations>()
 
             const structs = (await getAutocompleteDump()).ItemStruct
             for (const struct of structs) {
